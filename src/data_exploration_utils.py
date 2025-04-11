@@ -1,6 +1,8 @@
 import pandas as pd
 import re
 import string
+from langdetect import detect
+from deep_translator import GoogleTranslator
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
@@ -17,6 +19,44 @@ nltk.download('wordnet')
 lemmatizer = WordNetLemmatizer()
 stop_words_en = set(stopwords.words('english'))
 stop_words_de = set(stopwords.words('german'))
+
+def detect_language(text):
+    try:
+        return detect(text)
+    except:
+        return 'unknown'
+
+
+def translate_all_to_english(df, text_column='text'):
+    """
+    Traduce el contenido de la columna especificada de cada registro del DataFrame a inglés.
+    Se utiliza la detección automática del idioma de origen, de modo que aun si un registro está en inglés,
+    se traducirá (lo que en la mayoría de los casos devolverá el mismo texto).
+    
+    Args:
+        df (pd.DataFrame): DataFrame que contiene los registros.
+        text_column (str): Nombre de la columna que contiene el texto a traducir.
+    
+    Returns:
+        pd.DataFrame: DataFrame con una nueva columna 'text_en' que contiene el texto traducido a inglés.
+    """
+    
+    # Creación del traductor con detección automática del idioma de origen.
+    translator = GoogleTranslator(source='auto', target='en')
+    
+    def translate_row(text):
+        try:
+            # Se traduce el texto a inglés
+            translated_text = translator.translate(text)
+            return translated_text
+        except Exception as e:
+            print(f"Error al traducir el texto: {e}")
+            # Si ocurre algún error, se retorna el texto original
+            return text
+
+    # Aplicar la función de traducción a la columna especificada
+    df['text_en'] = df[text_column].apply(translate_row)
+    return df
 
 def check_class_imbalance(df, column_name):
     """
@@ -42,20 +82,19 @@ def check_class_imbalance(df, column_name):
 
     return df_final
 
-def preprocess_text(text, language='en'):
+def preprocess_text(text):
     """
-    Preprocesses a given text by applying several text cleaning steps, such as:
+    Preprocesses English text by applying several cleaning steps:
     - Lowercasing the text
-    - Expanding contractions (English only)
+    - Expanding contractions
     - Removing punctuation and numbers
     - Tokenizing the text
-    - Removing stopwords (based on the specified language)
+    - Removing English stopwords
     - Lemmatizing the tokens
     - Removing very short tokens (e.g., noise or irrelevant words)
 
-    Inputs:
-        text (str): The input text to be preprocessed.
-        language (str, optional) [default = 'en']: The language of the text. Supports 'en' for English and 'de' for German.
+    Args:
+        text (str): The input English text to be preprocessed.
 
     Returns:
         str: The cleaned and preprocessed text as a single string.
@@ -63,30 +102,27 @@ def preprocess_text(text, language='en'):
     # Convert to lowercase
     text = text.lower()
     
-    # Expand contractions (English only)
-    if language == 'en':
-        text = contractions.fix(text)
+    # Expand contractions
+    text = contractions.fix(text)
 
     # Remove numbers and punctuation
     text = re.sub(r'\d+', '', text)
-    text = text.translate(str.maketrans('', '', string.punctuation))
+    text = re.sub(f"[{re.escape(string.punctuation)}]", " ", text)
 
     # Tokenization
     tokens = nltk.word_tokenize(text)
 
-    # Remove stopwords (according to language)
-    if language == 'en':
-        tokens = [t for t in tokens if t not in stop_words_en]
-    elif language == 'de':
-        tokens = [t for t in tokens if t not in stop_words_de]
+    # Remove English stopwords
+    tokens = [t for t in tokens if t not in stop_words_en]
 
     # Lemmatization
     tokens = [lemmatizer.lemmatize(t) for t in tokens]
 
-    # Remove very short tokens (noise)
+    # Remove very short tokens (e.g., <=2 characters)
     tokens = [t for t in tokens if len(t) > 2]
 
     return ' '.join(tokens)
+
 
 def generate_wordcloud(df, text_column='clean_text', stopwords=None, width=800, height=400, colormap='coolwarm'):
     """
