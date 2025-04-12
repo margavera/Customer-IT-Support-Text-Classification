@@ -38,18 +38,6 @@ The model is trained using the CSV files in the `data/` directory:
 - `ticket_valid.csv`: Validation dataset
 - `ticket_test.csv`: Test dataset
 
-To train the model, run:
-
-```
-python train_model.py
-```
-
-This will:
-1. Load the datasets
-2. Preprocess the text data
-3. Train a model (Naive Bayes by default)
-4. Evaluate the model on the test set
-5. Save the trained model to `models/text_classifier.pkl`
 
 ### Running the App
 
@@ -67,18 +55,3 @@ This will start a local web server and open the app in your default browser.
 2. **Try Examples**: Alternatively, select one of the sample texts from the dropdown menu and click "Use this sample".
 3. **Classify**: Click the "Classify" button to see the prediction.
 4. **View Results**: The predicted category and confidence scores will be displayed.
-5. **Explore Data**: You can explore the training datasets by clicking "Load Datasets" in the sidebar.
-
-## Customizing the Classifier
-
-You can modify the training parameters in `train_model.py`:
-
-- Change the classifier type between 'NB' (Naive Bayes) and 'SVM' (Support Vector Machine)
-- Enable/disable grid search for hyperparameter tuning
-- Adjust preprocessing steps (stopwords removal, stemming, etc.)
-
-## Troubleshooting
-
-- If the model file is missing, the app will create a simple demo model automatically
-- Make sure your CSV files have the correct format and column names (text_en, queue)
-- Check that your data folder contains all three required CSV files 
