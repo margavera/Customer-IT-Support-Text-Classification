@@ -1,6 +1,24 @@
 # Text Classification for Customer Support Tickets
 
-This project implements a text classification system for customer support tickets using traditional NLP techniques with scikit-learn. It provides tools for training, evaluating, and deploying machine learning models to categorize support tickets based on their content.
+Team members:
+
+| Name                           | Email                               |
+| -----------------------        | ----------------------------------- |
+| Margarita Vera Cabrer          | marga.vera@alu.icai.comillas.edu    |
+| Elena Martínez Torrijos        | 202407060@alu.comillas.edu          |
+| Claudia Hermández de la Calera | chdelacalera@alu.comillas.edu       |
+
+
+The dataset used in this project was obtained from Kaggle and is available at the following link:     
+[Multilingual Customer Support Tickets](https://www.kaggle.com/datasets/tobiasbueck/multilingual-customer-support-tickets?select=dataset-tickets-multi-lang3-4k.csv)   
+ 
+It contains a collection of real-world customer support tickets written in english or german, along with metadata such as ticket subject, body, language, assigned queue, priority, and various tags.    
+ 
+We chose this dataset because it offers rich information (dataset size: 20k records) that allows us to classify the appropriate queue for each support ticket based on the given details. By analyzing the info given, we aim to predict which team or department (queue) should handle the ticket.     
+
+Furthermore, data was enriched using `all_tickets.csv`: [Customer-Support-Ticket-Classification](https://github.com/Er-Devanshu/Customer-Support-Ticket-Classification/tree/main)
+ 
+This classification task can help to automatize the assignment process in customer support systems, ensuring that each ticket is directed to the right team for a timely and effective response.
 
 ## Project Structure
 
@@ -10,157 +28,31 @@ This project implements a text classification system for customer support ticket
 ├── models/                # Trained models and model artifacts
 ├── notebooks/             # Jupyter notebooks
 │   ├── EDA.ipynb          # Exploratory Data Analysis
-│   └── TextClassification.ipynb  # Model training and evaluation
+│   ├── CNN.ipynb          # CNN model training and evaluation
+│   ├── DistilBERT.ipynb   # DistilBERT model training and evaluation
+│   └── NB_SVM.ipynb       # Naive Bayes and SVM models training and evaluation
 ├── src/                   # Source code
-│   ├── config.py          # Configuration settings
-│   ├── evaluate.py        # Model evaluation tools
-│   ├── models.py          # Model definitions
-│   ├── preprocessing.py   # Text preprocessing functions
-│   └── utils.py           # Utility functions
-└── README.md              # This file
+│   ├── __init__.py          
+│   ├── data_exploration_utils.py   # EDA exploration
+│   ├── evaluate_model.py           # Model evaluations
+│   ├── models.py          # Models creation (except CNN)
+│   ├── tf_init.py         # Tensorflow
+│   └── utils.py           # Useful load functions
+├── streamlit/             # Streamlit App
+│   ├── app.py             # Streamlit App code with CNN model
+│   └── README_APP.md      # Contains information about the App
+├── README.md              # This file
+└── requirements.txt       # Evinoment's requirements
 ```
 
-## Features
+## Key Features
 
 - **Text Processing**: Tokenization, stemming, stopword removal, and TF-IDF vectorization.
-- **Multiple Models**: Support for Naive Bayes and SVM classifiers.
+- **Multiple Models**: Support for CNN, DistilBERT, Naive Bayes and SVM classifiers.
 - **Hyperparameter Tuning**: Grid search for optimal model parameters.
 - **Evaluation**: Comprehensive evaluation metrics including confusion matrices, classification reports, and visualizations.
 - **Model Persistence**: Save and load trained models for reuse.
 - **Exploratory Analysis**: Tools for understanding data distribution and text characteristics.
 
-## Requirements
-
-- Python 3.6+
-- scikit-learn
-- pandas
-- numpy
-- nltk
-- matplotlib
-- seaborn
-- wordcloud (for EDA notebook)
-
-## Getting Started
-
-1. **Clone the repository**
-
-2. **Install dependencies**
-   ```
-   pip install scikit-learn pandas numpy nltk matplotlib seaborn wordcloud
-   ```
-
-3. **Prepare your data**
-   - Place your CSV dataset in the `data/` directory
-   - Format: CSV file with a column for text content and a column for labels
-
-4. **Run exploratory data analysis**
-   - Open `notebooks/EDA.ipynb` in Jupyter
-   - Modify the file path and column names as needed
-   - Execute the notebook to understand your data
-
-5. **Train and evaluate models**
-   - Open `notebooks/TextClassification.ipynb` in Jupyter
-   - Adjust the configuration settings for your dataset
-   - Execute the notebook to train and evaluate models
-
-## Using the Source Code
-
-### Configuration
-
-Modify `src/config.py` to set default parameters for data loading, preprocessing, training, and evaluation.
-
-```python
-# Example: Updating configuration
-from src.config import get_config, update_config
-
-config = get_config()
-config = update_config(config, 
-    data={
-        'dataset_path': 'data/my_tickets.csv',
-        'text_column': 'content',
-        'label_column': 'category'
-    },
-    training={
-        'classifier': 'SVM',
-        'use_grid_search': True
-    }
-)
-```
-
-### Preprocessing Text
-
-```python
-from src.preprocessing import preprocess_text, create_vectorizer
-
-# Preprocess a single text
-processed_text = preprocess_text("I need help with my account login")
-
-# Create a vectorizer
-vectorizer = create_vectorizer(remove_stop_words=True, use_stemming=False)
-```
-
-### Training Models
-
-```python
-from src.models import create_naive_bayes_pipeline, train_model
-
-# Create a pipeline
-pipeline = create_naive_bayes_pipeline(vectorizer, tfidf_transformer)
-
-# Train the model
-trained_model = train_model(pipeline, train_data, train_labels)
-```
-
-### Evaluating Models
-
-```python
-from src.evaluate import evaluate_model, plot_confusion_matrix
-
-# Get predictions
-predictions = trained_model.predict(test_data)
-
-# Evaluate
-accuracy = evaluate_model(predictions, test_labels)
-
-# Visualize
-plot_confusion_matrix(test_labels, predictions)
-```
-
-## Extending the Project
-
-### Adding New Models
-
-Extend `src/models.py` to add new classifier types:
-
-```python
-def create_random_forest_pipeline(vectorizer, tfidf_transformer):
-    """Create a pipeline with Random Forest classifier"""
-    from sklearn.ensemble import RandomForestClassifier
-    
-    return Pipeline([
-        ('vect', vectorizer),
-        ('tfidf', tfidf_transformer),
-        ('clf', RandomForestClassifier(n_estimators=100, random_state=42))
-    ])
-```
-
-### Customizing Preprocessing
-
-Modify `src/preprocessing.py` to add custom preprocessing steps:
-
-```python
-def custom_preprocess(text):
-    """Custom preprocessing for specific domain knowledge"""
-    # Your custom preprocessing logic
-    return processed_text
-```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-* Inspiration from the notebook template shared in the request
-* scikit-learn documentation for best practices in text classification
-* NLTK documentation for text processing techniques
+## Results
+Each notebook provides an explanation for every decision made, along with a comprehensive analysis of the results achieved.
