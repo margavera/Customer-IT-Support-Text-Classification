@@ -11,6 +11,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 import pickle
 import time
 from typing import Dict, List, Tuple, Union, Any
+import datetime
 
 # Import transformers with error handling for compatibility
 try:
@@ -735,35 +736,6 @@ def weighted_categorical_crossentropy(class_weights):
     
     return loss
 
-def encode_texts(tokenizer, texts, max_length=128):
-    """
-    Encode texts using the tokenizer
-    
-    Parameters:
-    -----------
-    tokenizer : DistilBertTokenizer
-        Tokenizer to use
-    texts : list
-        List of texts to encode
-    max_length : int, default=128
-        Maximum sequence length
-        
-    Returns:
-    --------
-    encodings : dict
-        Dictionary with 'input_ids' and 'attention_mask'
-    """
-    # Tokenize the texts
-    encodings = tokenizer(
-        texts,
-        padding='max_length',
-        truncation=True,
-        max_length=max_length,
-        return_tensors='tf'
-    )
-    
-    return encodings
-
 def train_dl_model(model, x_train, x_valid, y_train, y_valid, epochs=10, batch_size=16, 
                  eval_batch_size=32, callbacks=None):
     """
@@ -856,4 +828,302 @@ def train_dl_model(model, x_train, x_valid, y_train, y_valid, epochs=10, batch_s
     )
     val_loss, val_accuracy = val_metrics[0], val_metrics[1]
     
-    return val_loss, val_accuracy 
+    return val_loss, val_accuracy
+
+def train_with_huggingface_trainer(
+    tokenized_train_dataset, 
+    tokenized_valid_dataset, 
+    num_labels=3, 
+    model_name="distilbert-base-uncased",
+    epochs=3, 
+    train_batch_size=16, 
+    eval_batch_size=32,
+    warmup_steps=500,
+    weight_decay=0.01,
+    learning_rate=5e-5,
+    output_dir="results"
+):
+    """
+    Train a DistilBERT model using Hugging Face's TFTrainer
+    
+    Parameters:
+    -----------
+    tokenized_train_dataset : TFDataset or dict
+        Tokenized training dataset in the format expected by Hugging Face
+    tokenized_valid_dataset : TFDataset or dict
+        Tokenized validation dataset
+    num_labels : int, default=3
+        Number of output classes
+    model_name : str, default="distilbert-base-uncased"
+        Pre-trained model name from Hugging Face
+    epochs : int, default=3
+        Number of training epochs
+    train_batch_size : int, default=16
+        Batch size for training
+    eval_batch_size : int, default=32
+        Batch size for evaluation
+    warmup_steps : int, default=500
+        Number of warmup steps for learning rate scheduler
+    weight_decay : float, default=0.01
+        Weight decay for regularization
+    learning_rate : float, default=5e-5
+        Learning rate
+    output_dir : str, default="results"
+        Directory to save model outputs
+        
+    Returns:
+    --------
+    model : TFDistilBertForSequenceClassification
+        Trained model
+    trainer : TFTrainer
+        The trainer object that can be used for additional evaluation
+    """
+    # Import necessary Hugging Face components
+    try:
+        from transformers import TFTrainingArguments, TFTrainer, TFDistilBertForSequenceClassification
+    except ImportError:
+        raise ImportError(
+            "Hugging Face transformers library is required. "
+            "Please install it with: pip install transformers"
+        )
+    
+    # Set up training arguments
+    training_args = TFTrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=train_batch_size,
+        per_device_eval_batch_size=eval_batch_size,
+        warmup_steps=warmup_steps,
+        weight_decay=weight_decay,
+        learning_rate=learning_rate,
+        logging_dir=f"{output_dir}/logs",
+        logging_steps=10,
+        eval_steps=100,
+        save_steps=1000,
+        evaluation_strategy="steps"
+    )
+    
+    # Create model within the distribution strategy scope
+    print(f"Initializing model with {num_labels} output classes...")
+    with training_args.strategy.scope():
+        model = TFDistilBertForSequenceClassification.from_pretrained(
+            model_name, 
+            num_labels=num_labels
+        )
+    
+    # Create TFTrainer
+    trainer = TFTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_train_dataset,
+        eval_dataset=tokenized_valid_dataset
+    )
+    
+    # Train the model
+    print("Training with Hugging Face TFTrainer...")
+    trainer.train()
+    
+    # Evaluate the model
+    print("Evaluating model...")
+    eval_results = trainer.evaluate()
+    print(f"Evaluation results: {eval_results}")
+    
+    return model, trainer
+
+def prepare_datasets_for_trainer(x_train, y_train, x_valid, y_valid):
+    """
+    Prepare datasets for use with Hugging Face's TFTrainer
+    
+    Parameters:
+    -----------
+    x_train : dict or BatchEncoding
+        Training inputs with 'input_ids' and 'attention_mask'
+    y_train : array-like
+        One-hot encoded training labels
+    x_valid : dict or BatchEncoding
+        Validation inputs
+    y_valid : array-like
+        One-hot encoded validation labels
+        
+    Returns:
+    --------
+    train_dataset : tf.data.Dataset
+        Training dataset in format for TFTrainer
+    valid_dataset : tf.data.Dataset
+        Validation dataset in format for TFTrainer
+    """
+    import numpy as np
+    
+    # Convert y labels from one-hot to indices
+    y_train_indices = np.argmax(y_train, axis=1)
+    y_valid_indices = np.argmax(y_valid, axis=1)
+    
+    # Prepare train features
+    train_features = {
+        'input_ids': x_train['input_ids'].numpy() if hasattr(x_train['input_ids'], 'numpy') else x_train['input_ids'],
+        'attention_mask': x_train['attention_mask'].numpy() if hasattr(x_train['attention_mask'], 'numpy') else x_train['attention_mask'],
+        'labels': y_train_indices
+    }
+    
+    # Prepare validation features
+    valid_features = {
+        'input_ids': x_valid['input_ids'].numpy() if hasattr(x_valid['input_ids'], 'numpy') else x_valid['input_ids'],
+        'attention_mask': x_valid['attention_mask'].numpy() if hasattr(x_valid['attention_mask'], 'numpy') else x_valid['attention_mask'],
+        'labels': y_valid_indices
+    }
+    
+    # Create TensorFlow datasets
+    train_dataset = tf.data.Dataset.from_tensor_slices(train_features)
+    valid_dataset = tf.data.Dataset.from_tensor_slices(valid_features)
+    
+    return train_dataset, valid_dataset
+
+def define_callbacks(patience=2, min_delta=0.01, checkpoint_path=None):
+    """
+    Define callbacks for model training
+    
+    Parameters:
+    -----------
+    patience : int, default=2
+        Number of epochs with no improvement after which training will be stopped
+    min_delta : float, default=0.01
+        Minimum change in the monitored quantity to qualify as an improvement
+    checkpoint_path : str, default=None
+        Path to save model checkpoints. If None, model checkpoints won't be saved.
+        
+    Returns:
+    --------
+    callbacks : list
+        List of Keras callbacks
+    """
+    callbacks = []
+    
+    # Add early stopping callback
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor='val_accuracy',
+        patience=patience,
+        min_delta=min_delta,
+        restore_best_weights=True,
+        verbose=1
+    )
+    callbacks.append(early_stopping)
+    
+    # Add model checkpoint callback if path is provided
+    if checkpoint_path:
+        model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+            filepath=checkpoint_path,
+            save_best_only=True,
+            monitor='val_accuracy',
+            verbose=1
+        )
+        callbacks.append(model_checkpoint)
+    
+    # Add TensorBoard callback
+    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(
+        log_dir=log_dir,
+        histogram_freq=1
+    )
+    callbacks.append(tensorboard_callback)
+    
+    return callbacks
+
+def train_model(model, x_train, x_valid, y_train, y_valid, epochs=3, batch_size=32, 
+              eval_batch_size=None, callbacks=None):
+    """
+    Train a model
+    
+    Parameters:
+    -----------
+    model : tf.keras.Model
+        Model to train
+    x_train : dict, tf.data.Dataset, or array-like
+        Training data features
+    x_valid : dict, tf.data.Dataset, or array-like
+        Validation data features
+    y_train : array-like
+        Training data labels
+    y_valid : array-like
+        Validation data labels
+    epochs : int, default=3
+        Number of epochs to train the model
+    batch_size : int, default=32
+        Batch size for training
+    eval_batch_size : int, default=None
+        Batch size for evaluation. If None, uses the same as batch_size.
+    callbacks : list, default=None
+        List of Keras callbacks
+        
+    Returns:
+    --------
+    val_loss : float
+        Validation loss
+    val_accuracy : float
+        Validation accuracy
+    history : tf.keras.callbacks.History
+        Training history object returned by model.fit()
+    """
+    import time
+    import datetime
+    import numpy as np
+    
+    # Set evaluation batch size if not provided
+    if eval_batch_size is None:
+        eval_batch_size = batch_size
+    
+    print(f"Training with batch size: {batch_size}, evaluation batch size: {eval_batch_size}")
+    print(f"Training on {len(y_train)} samples, validating on {len(y_valid)} samples")
+    
+    # Prepare callbacks if not provided
+    if callbacks is None:
+        callbacks = define_callbacks()
+    
+    # Convert BatchEncoding to dict if needed (for transformers library)
+    def prepare_inputs(inputs):
+        # Check if it's a BatchEncoding object from transformers
+        if hasattr(inputs, 'data') and isinstance(inputs.data, dict):
+            # Convert BatchEncoding to dict of tensors
+            return {
+                'input_ids': tf.convert_to_tensor(inputs['input_ids']),
+                'attention_mask': tf.convert_to_tensor(inputs['attention_mask'])
+            }
+        # For regular dict with tensors that aren't TF tensors
+        elif isinstance(inputs, dict):
+            return {
+                'input_ids': tf.convert_to_tensor(inputs['input_ids']),
+                'attention_mask': tf.convert_to_tensor(inputs['attention_mask'])
+            }
+        # If it's already a list or tuple of tensors
+        return inputs
+    
+    # Prepare inputs for BatchEncoding objects
+    if hasattr(x_train, 'data') or isinstance(x_train, dict):
+        x_train = prepare_inputs(x_train)
+        x_valid = prepare_inputs(x_valid)
+    
+    # Train the model
+    start_time = time.time()
+    
+    history = model.fit(
+        x_train,
+        y_train,
+        validation_data=(x_valid, y_valid),
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_batch_size=eval_batch_size,
+        callbacks=callbacks,
+        verbose=1
+    )
+    
+    end_time = time.time()
+    print(f"Training completed in {end_time - start_time:.2f} seconds")
+    
+    # Find the epoch with the best validation accuracy
+    best_epoch_idx = np.argmax(history.history['val_accuracy'])
+    val_loss = history.history['val_loss'][best_epoch_idx]
+    val_accuracy = history.history['val_accuracy'][best_epoch_idx]
+    
+    print(f"Best validation accuracy: {val_accuracy:.4f} (loss: {val_loss:.4f}) at epoch {best_epoch_idx + 1}")
+    
+    # Return history along with other metrics
+    return val_loss, val_accuracy, history 
